@@ -8,6 +8,16 @@ BLE sensor networks and drivers for sensorjs
 
     $ npm install sensorjs-ble
 
+### BLE library
+
+<b>noble</b>
+  - [https://github.com/sandeepmistry/noble](https://github.com/sandeepmistry/noble)
+
+
+    $ sudo apt-get install build-essential
+    $ sudo apt-get install bluez
+    $ sudo apt-get install libbluetooth-dev
+
 ## Example
 ```js
 var connect = require('sensorjs'),
@@ -53,7 +63,7 @@ sensorApp.discover('sensorTagHum', function (err, devices) {
 
 [https://github.com/daliworks/sensorjs-ble/graphs/contributors](https://github.com/daliworks/sensorjs-ble/graphs/contributors)
 
-## License 
+## License
 
 (The MIT License)
 
