@@ -12,11 +12,11 @@ BLE sensor networks and drivers for sensorjs
 
 <b>noble</b>
   - [https://github.com/sandeepmistry/noble](https://github.com/sandeepmistry/noble)
-
-
-    $ sudo apt-get install build-essential
-    $ sudo apt-get install bluez
-    $ sudo apt-get install libbluetooth-dev
+```
+$ sudo apt-get install build-essential
+$ sudo apt-get install bluez
+$ sudo apt-get install libbluetooth-dev
+```
 
 ## Example
 ```js
