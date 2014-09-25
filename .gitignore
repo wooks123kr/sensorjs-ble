@@ -1,0 +1,11 @@
+.DS_Store
+.DS_Store
+*.swp
+*.swo
+node_modules
+cscope.*
+*.log
+*.log.*
+dump.rdb
+client/.idea/*
+.idea/*

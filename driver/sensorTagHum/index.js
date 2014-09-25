@@ -11,11 +11,7 @@ var ble;
 
 function SensorTagHum(sensorInfo, options) {
   Sensor.call(this, sensorInfo, options);
-  if (sensorInfo.model) {
-    this.model = sensorInfo.model;
-  } 
   ble = sensorDriver.getNetwork('ble');
-  console.error('SensorTagHum', sensorInfo);
 }
 
 SensorTagHum.properties = {
@@ -30,9 +26,9 @@ SensorTagHum.properties = {
   ble: {
     service: 'f000aa2004514000b000000000000000',
     config: 'f000aa2204514000b000000000000000',
-    data: 'f000aa2104514000b000000000000000',
+    data: 'f000aa2104514000b000000000000000'
   },
-  id: '{model}-{macAddress}', // id generation template
+  id: '{model}-{address}'
 };
 
 util.inherits(SensorTagHum, Sensor);
@@ -67,8 +63,10 @@ SensorTagHum.prototype.readHumData = function(cb) {
 };
 
 SensorTagHum.prototype._get = function () {
-  var result = {};
-  var self = this;
+  var self = this,
+      result = {},
+      options;
+
   if (this.deviceHandle) {
     logger.debug('w/ deviceHandle');
     this.readHumData(function (err, data) {
@@ -80,29 +78,32 @@ SensorTagHum.prototype._get = function () {
       }
     });
   } else {
-    logger.debug('getDevice');
-    ble.getDevice(this.info.device.address, 
-      {driverName: 'SensorTagHum', serviceUUIDs: [SensorTagHum.properties.ble.service]}, 
-      function (err, devices) {
+    logger.debug('getDevice', this.info);
 
-        if (!err && !_.isEmpty(devices)) {
-          logger.debug('got device');
-          if (devices[0].deviceHandle) {
-            //property : ex) 'sensorTagHum-bc6a29ac16ca'
-            self.deviceHandle = devices[0].deviceHandle[self.model + '-' + self.info.device.address]; 
-          } else {
-            self.deviceHandle = devices[0]; 
-          }
-          self.readHumData(function (err, data) {
-            if (err) {
-              self.emit('data', {status: 'error', id : self.id, message: err || 'read error'});
-            } else {
-              result[_.first(SensorTagHum.properties.dataTypes)] = data;
-              self.emit('data', {status: 'ok', id : self.id, result: result});
-            }
-          });
+    options = {
+      models: [this.model],
+      serviceUUIDs: [SensorTagHum.properties.ble.service]
+    };
+
+    ble.getDevice(this.info.device.address, options, function (err, devices) {
+      if (!err && !_.isEmpty(devices)) {
+        logger.debug('got device');
+        if (devices[0].deviceHandle) {
+          //property : ex) 'sensorTagHum-bc6a29ac16ca'
+          self.deviceHandle = devices[0].deviceHandle[self.model + '-' + self.info.device.address];
+        } else {
+          self.deviceHandle = devices[0];
         }
-      });
+        self.readHumData(function (err, data) {
+          if (err) {
+            self.emit('data', {status: 'error', id : self.id, message: err || 'read error'});
+          } else {
+            result[_.first(SensorTagHum.properties.dataTypes)] = data;
+            self.emit('data', {status: 'ok', id : self.id, result: result});
+          }
+        });
+      }
+    });
   }
 };
 

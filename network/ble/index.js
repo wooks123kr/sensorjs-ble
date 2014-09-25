@@ -31,9 +31,10 @@ Ble.prototype.getDevice = function (addr, options, cb) {
     return cb && cb(null, [noble._peripherals[addr]]);
   } else {
     //FIXME: new Peripheral, peripheral.connect().
-    this._discover(addr, options.model, options.serviceUUIDs || [], options, cb); 
+    this._discover(addr, options.models, options.serviceUUIDs || [], options, cb);
   }
 };
+
 Ble.prototype.discover = function (driverName/*or model*/, options, cb) {
   var serviceUUIDs = [],
     props, models;
@@ -72,7 +73,7 @@ Ble.prototype.discover = function (driverName/*or model*/, options, cb) {
 Ble.prototype._discover = function (addr, models, serviceUUIDs, options, cb) {
   var self = this;
 
-  if (self.underDiscover) {
+  if (this.underDiscover) {
     if (cb) {
       cb(new Error('already scanning'));
     } else {
@@ -80,19 +81,24 @@ Ble.prototype._discover = function (addr, models, serviceUUIDs, options, cb) {
     }
     return;
   }
-  self.underDiscover = true;
+
+  this.underDiscover = true;
+  this.peripherals = [];
 
   var onDiscover = function(peripheral) {
     logger.debug('on discover', peripheral.uuid, peripheral.advertisement);
     self.peripherals.push(peripheral);
   };
+
   var startScan = function () {
     if (self.scanTimer) {
       logger.error('already startScan');
       return; //already scan
     }
+
     noble.on('discover', onDiscover);
     noble.startScanning();
+
     self.scanTimer = setTimeout(function () {
       self.scanTimer = null;
       noble.removeListener('discover', onDiscover);
@@ -100,19 +106,10 @@ Ble.prototype._discover = function (addr, models, serviceUUIDs, options, cb) {
     }, DEVICE_SCAN_TIMEOUT);
   };
 
-  this.peripherals = [];
-
   noble.once('scanStart', function () {
     logger.debug('on scanStart');
   });
-  logger.debug('noble.state', noble.state);
-  if (noble.state === 'poweredOn' || noble.state === 'unsupported') {
-    startScan();
-  } else {
-    noble.once('stateChange', function() {
-      startScan();
-    });
-  }
+
   noble.once('scanStop', function () {
     var founds = [];
     if (self.scanTimer) {
@@ -202,10 +199,16 @@ Ble.prototype._discover = function (addr, models, serviceUUIDs, options, cb) {
       return cb && cb(null, founds);
     });
   });
+
+  logger.debug('noble.state', noble.state);
+
+  if (noble.state === 'poweredOn' || noble.state === 'unsupported') {
+    startScan();
+  } else {
+    noble.once('stateChange', function() {
+      startScan();
+    });
+  }
 };
 
 module.exports = new Ble();
-
-process.on('uncaughtException', function (/*err*/) {
-  return; // ignore, logger.error('[uncaughtException] ' + err.stack);
-});

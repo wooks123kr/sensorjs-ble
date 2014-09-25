@@ -11,11 +11,7 @@ var ble;
 
 function SensorTagWobble(sensorInfo, options) {
   Sensor.call(this, sensorInfo, options);
-  if (sensorInfo.model) {
-    this.model = sensorInfo.model;
-  } 
   ble = sensorDriver.getNetwork('ble');
-  console.error('SensorTagWobble', sensorInfo);
 }
 
 SensorTagWobble.properties = {
@@ -33,7 +29,7 @@ SensorTagWobble.properties = {
     data:   'f000aa1104514000b000000000000000',
     period: 'f000aa1304514000b000000000000000'
   },
-  id: '{model}-{macAddress}', // id generation template
+  id: '{model}-{address}'
 };
 
 util.inherits(SensorTagWobble, Sensor);
@@ -97,18 +93,27 @@ SensorTagWobble.prototype.readWobbleData = function(cb) {
 SensorTagWobble.prototype._enableChange = function () {
   var self = this;
 
-  var f = function (){
-    self._get('change');
-  };
+  if (!this.timer) {
+    this.timer = setInterval(function () {
+      self._get('change');
+    }, 1000);
+  }
+};
 
-  setInterval(f, 1000);
+SensorTagWobble.prototype._clear = function () {
+  if (this.timer) {
+    clearInterval(this.timer);
+    delete this.timer;
+  }
 };
 
 SensorTagWobble.prototype._get = function (type) {
+  var result = {},
+      self = this,
+      options;
+
   type = type || 'data';
 
-  var result = {};
-  var self = this;
   if (this.deviceHandle) {
     logger.debug('w/ deviceHandle');
     this.readWobbleData(function (err, data) {
@@ -123,36 +128,39 @@ SensorTagWobble.prototype._get = function (type) {
       }
     });
   } else {
-    logger.debug('getDevice');
-    ble.getDevice(this.info.device.address, 
-      {driverName: 'sensorTagWobble', serviceUUIDs: [SensorTagWobble.properties.ble.service]}, 
-      function (err, devices) {
+    logger.debug('getDevice', this.info);
 
-        if (!err && !_.isEmpty(devices)) {
-          logger.debug('got device');
-          if (devices[0].deviceHandle) {
-            //property : ex) 'sensorTagWobble-bc6a29ac16ca'
-            self.deviceHandle = devices[0].deviceHandle[self.model + '-' + self.info.device.address]; 
-          } else {
-            self.deviceHandle = devices[0]; 
-          }
+    options = {
+      models: [this.model],
+      serviceUUIDs: [SensorTagWobble.properties.ble.service]
+    };
 
-          ble.once('disconnect', function() {
-            logger.debug('disconnect', self.deviceHandle);
-            self.deviceHandle = null;
-          });
-
-          self.readWobbleData(function (err, data) {
-            if (err) {
-              self.emit(type, {status: 'error', id : self.id, message: err || 'read error'});
-            } else {
-              result[_.first(SensorTagWobble.properties.dataTypes)] = data;
-              self.emit(type, {status: 'ok', id : self.id, result: result});
-              self.prevWobble = self.currWobble;
-            }
-          });
+    ble.getDevice(this.info.device.address, options, function (err, devices) {
+      if (!err && !_.isEmpty(devices)) {
+        logger.debug('got device');
+        if (devices[0].deviceHandle) {
+          //property : ex) 'sensorTagWobble-bc6a29ac16ca'
+          self.deviceHandle = devices[0].deviceHandle[self.model + '-' + self.info.device.address];
+        } else {
+          self.deviceHandle = devices[0];
         }
-      });
+
+        ble.once('disconnect', function() {
+          logger.debug('disconnect', self.deviceHandle);
+          self.deviceHandle = null;
+        });
+
+        self.readWobbleData(function (err, data) {
+          if (err) {
+            self.emit(type, {status: 'error', id : self.id, message: err || 'read error'});
+          } else {
+            result[_.first(SensorTagWobble.properties.dataTypes)] = data;
+            self.emit(type, {status: 'ok', id : self.id, result: result});
+            self.prevWobble = self.currWobble;
+          }
+        });
+      }
+    });
   }
 };
 
