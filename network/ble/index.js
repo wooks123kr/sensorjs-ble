@@ -11,7 +11,7 @@ var sensorDriver = require('../../index'),
     Device = sensorDriver.Device;
 
 var DEVICE_SCAN_TIMEOUT = 10000,
-    DEVICE_CONN_TIMEOUT = 6000,
+    DEVICE_CONN_TIMEOUT = 10000,
     SERVICE_DISCOVERY_TIMEOUT = 15000;
 
 var logger = Network.getLogger();
@@ -23,55 +23,40 @@ function Ble(options) {
 util.inherits(Ble, Network);
 
 Ble.prototype.getDevice = function (addr, options, cb) {
+  var self = this;
+
   if (typeof options === 'function') {
     cb = options;
   }
 
-  if (!this.underDiscover && noble._peripherals[addr] && noble._peripherals[addr].connected) { //FIXME: check if it's connected?
-    return cb && cb(null, [noble._peripherals[addr]]);
-  } else {
-    //FIXME: new Peripheral, peripheral.connect().
-    this._discover(addr, options.models, options.serviceUUIDs || [], options, cb);
+  if (this.device && this.device.deviceHandle &&
+      noble._peripherals[addr] && noble._peripherals[addr].state === 'connected') {
+    logger.debug('[BLE/Network] Device is already connected');
+    return cb && cb(null, this.device);
   }
+
+  // TODO: connect directly without scanning if the sensor device(peripheral) is registered
+
+  if (this.underDiscover) {
+    logger.warn('[BLE/Network] Under discovering');
+    return cb && cb(new Error('under discovering'));
+  }
+
+  this._discover(addr, options.model, options.serviceUUID, options, function (err, device) {
+    self.underDiscover = false;
+    return cb && cb(err, device);
+  });
 };
 
 Ble.prototype.discover = function (driverName/*or model*/, options, cb) {
-  var serviceUUIDs = [],
-    props, models;
+  var self = this,
+      peripherals = [],
+      models;
 
   if (typeof options === 'function') {
     cb = options;
     options = undefined;
   }
-  if (!driverName) {
-    driverName = 'sensorTag';
-  }
-
-  //get models from driverName
-  models = sensorDriver.getDriverConfig()[driverName];
-  if (!models) { //find model
-    if(_.findKey(sensorDriver.getDriverConfig(), function (models) {
-      return _.contains(models, driverName);
-    })) {
-      models = [driverName];
-    } else {
-      return cb && cb(new Error('model not found'));
-    }
-  }
-  _.each(models, function (model) {
-    try {
-      props = sensorDriver.getSensorProperties(model);
-    } catch (e) { }
-    if (!props || !props[this.sensorNetwork]) {
-      return cb && cb(new Error('invalid model:' + model));  
-    }
-    serviceUUIDs.push(props[this.sensorNetwork].service);
-  });
-  this._discover(undefined, models, serviceUUIDs, options, cb);
-};
-
-Ble.prototype._discover = function (addr, models, serviceUUIDs, options, cb) {
-  var self = this;
 
   if (this.underDiscover) {
     if (cb) {
@@ -83,16 +68,120 @@ Ble.prototype._discover = function (addr, models, serviceUUIDs, options, cb) {
   }
 
   this.underDiscover = true;
-  this.peripherals = [];
 
   var onDiscover = function(peripheral) {
-    logger.debug('on discover', peripheral.uuid, peripheral.advertisement);
-    self.peripherals.push(peripheral);
+    logger.debug('[BLE/Network] On discover', peripheral.uuid, peripheral.advertisement);
+    peripherals.push(peripheral);
   };
 
   var startScan = function () {
     if (self.scanTimer) {
-      logger.error('already startScan');
+      logger.error('[BLE/Network] already startScan');
+      return; //already scan
+    }
+
+    noble.on('discover', onDiscover);
+
+    noble.startScanning();
+
+    self.scanTimer = setTimeout(function () {
+      self.scanTimer = null;
+      noble.removeListener('discover', onDiscover);
+      noble.stopScanning();
+    }, DEVICE_SCAN_TIMEOUT);
+  };
+
+  noble.once('scanStart', function () {
+    logger.debug('[BLE/Network] On scanStart');
+  });
+
+  noble.once('scanStop', function () {
+    var founds = [];
+
+    if (self.scanTimer) {
+      clearTimeout(self.scanTimer);
+      self.scanTimer = null;
+    }
+
+    logger.debug('[BLE/Network] On scanStop');
+
+    if (cb) {
+      self.emit('discover', 'scanStop');
+    }
+
+    _.forEach(peripherals, function (peripheral) {
+      _.forEach(models, function (model) {
+        var props = sensorDriver.getSensorProperties(model);
+
+        if (peripheral.advertisement && peripheral.advertisement.localName && props && props.bleLocalName &&
+            peripheral.advertisement.localName.toUpperCase() === props.bleLocalName.toUpperCase()) {
+          var device = new Device(self, peripheral.uuid,
+              [{ id: model + '-' + peripheral.uuid, model: model }]);
+
+          founds.push(device);
+
+          self.emit('discovered', device);
+        }
+      });
+    });
+
+    logger.debug('[BLE/Network] founds', founds);
+
+    self.underDiscover = false;
+
+    return cb && cb(null, founds);
+  });
+
+  // 1. Get models from driverName or from model
+  models = sensorDriver.getDriverConfig()[driverName];
+  if (!models) { //find model
+    if(_.findKey(sensorDriver.getDriverConfig(), function (models) {
+      return _.contains(models, driverName);
+    })) {
+      models = [driverName];
+    } else {
+      return cb && cb(new Error('model not found'));
+    }
+  }
+
+  // 2. Start BLE Scanning
+  logger.debug('noble.state', noble.state);
+  if (noble.state === 'poweredOn' || noble.state === 'unsupported') {
+    startScan();
+  } else {
+    noble.once('stateChange', function() {
+      startScan();
+    });
+  }
+};
+
+Ble.prototype._discover = function (addr, model, serviceUUID, options, cb) {
+  var self = this;
+
+  if (this.underDiscover) {
+    if (cb) {
+      cb(new Error('already discovering'));
+    } else {
+      this.emit('discover', 'error', new Error('already discovering'));
+    }
+    return;
+  }
+
+  this.underDiscover = true;
+  this.peripheral = null;
+
+  var onDiscover = function(peripheral) {
+    logger.debug('on discover', peripheral.uuid, peripheral.advertisement);
+
+    if (addr === peripheral.uuid) {
+      self.peripheral = peripheral;
+      logger.debug('on discover - discovered', peripheral.uuid);
+    }
+  };
+
+  var startScan = function () {
+    if (self.scanTimer) {
+      logger.error('[BLE/Network] already startScan');
       return; //already scan
     }
 
@@ -111,93 +200,123 @@ Ble.prototype._discover = function (addr, models, serviceUUIDs, options, cb) {
   });
 
   noble.once('scanStop', function () {
-    var founds = [];
+    var peripheral, connTimer;
+
     if (self.scanTimer) {
-      self.scanTimer = null;
       clearTimeout(self.scanTimer);
+      self.scanTimer = null;
     }
 
-    logger.debug('on scanStop');
+    logger.debug('[BLE/Network] On scanStop');
+
     if (cb) {
       self.emit('discover', 'scanStop');
     }
-    async.each(self.peripherals, function (peripheral, done) {
-      if (addr && addr !== peripheral.uuid) {
-        logger.error('skip to connect:', peripheral.uuid);
-        return done(); //skip
-      } 
 
-      var connTimer;
+    if (self.peripheral) {
+      peripheral = self.peripheral;
+
       connTimer = setTimeout(function () {
         try { peripheral.disconnect(); } catch (e) {}
+
         connTimer = null;
-        logger.info('conn timeout', peripheral.uuid);
-        done(null, 'conn timeout');
+
+        logger.warn('[BLE/Network] Timeout on connecting with peripheral',
+            DEVICE_CONN_TIMEOUT, peripheral.uuid);
+
+        return cb && cb(new Error('Timeout on connecting with peripheral'));
       }, DEVICE_CONN_TIMEOUT);
 
       peripheral.once('error', function () {
         if (connTimer) {
           try { peripheral.disconnect(); } catch (e) {}
-          connTimer = null;
           clearTimeout(connTimer);
+          connTimer = null;
         }
-        logger.info('on error');
-        return done(null, 'on error');
+        logger.error('[BLE/Network] On error with peripheral', peripheral.uuid);
       });
 
-      peripheral.connect(function () {
+      peripheral.connect(function (error) {
         var svcTimer;
-        logger.debug('connected and find service', peripheral.uuid, peripheral.advertisement);
+
+        if (error) {
+          logger.error('[BLE/Network] Error on connecting to the peripheral', peripheral.uuid, error);
+          return cb && cb(new Error('Error on connecting to the peripheral'));
+        }
+
         if (connTimer) {
           clearTimeout(connTimer);
+          connTimer = null;
+          logger.debug('[BLE/Network] Clearing timeout of connTimer');
         } else {
-          logger.info('do nothing connect...', peripheral.uuid);
+          logger.warn('[BLE/Network] Return - already timeout on connecting with peripheral', peripheral.uuid);
           return; //do nothing already timeout
         }
+
+        logger.debug('[BLE/Network] Connected and Discovering service', peripheral.uuid, peripheral.advertisement);
+
         svcTimer = setTimeout(function () {
-          logger.info('service timeout', peripheral.uuid);
           try { peripheral.disconnect(); } catch (e) {}
+
           svcTimer = null;
-          done(null, 'service timeout');
+
+          logger.info('[BLE/Network] Timeout on discovering services of peripheral',
+              SERVICE_DISCOVERY_TIMEOUT, peripheral.uuid);
+
+          return cb && cb(new Error('Timeout on discovering services of peripheral'));
         }, SERVICE_DISCOVERY_TIMEOUT);
 
-        peripheral.discoverSomeServicesAndCharacteristics(serviceUUIDs, [], function () { // FIXME: discoverService
-          var device;
+        peripheral.discoverSomeServicesAndCharacteristics([serviceUUID], null, function (error, services) {
+          var device, props;
+
+          if (error) {
+            logger.error('[BLE/Network] Error with discoverSomeServicesAndCharacteristics', error);
+            return cb && cb(error);
+          }
+
           if (svcTimer) {
-            //try { peripheral.disconnect(); } catch (e) {} //FIXME
             clearTimeout(svcTimer);
             svcTimer = null;
+            logger.debug('[BLE/Network] Clearing timeout of svcTimer');
           } else {
-            logger.info('do nothing... already timer expired', peripheral.uuid);
+            logger.warn('[BLE/Network] Return - already timeout on discovering services', peripheral.uuid);
             return; //do nothing already timeout
           }
-          //FIXME: find a model
-          device = new Device(self, peripheral.uuid, 
-                      [{id:models[0] + '-' + peripheral.uuid, 
-                        model: models[0], 
-                        deviceHandle: peripheral}]); //not used for now
-          founds.push(device);
-          self.emit('discovered', device);
 
-          noble._peripherals[device.address].connected = true;       
+          logger.debug('[BLE/Network] Services are discovered', services);
 
-          peripheral.once('disconnect', function() {
-            logger.debug('peripheral disconnect / address=', device.address);
-            noble._peripherals[device.address].connected = false;
-            self.emit('disconnect', device); 
+          props = sensorDriver.getSensorProperties(model);
+
+          _.forEach(services, function (service) {
+            if (service.uuid === props.ble.service) {
+              device = new Device(self, peripheral.uuid,
+                          [{id:model + '-' + peripheral.uuid,
+                            model: model,
+                            deviceHandle: peripheral}]);
+
+              peripheral.once('disconnect', function() {
+                logger.debug('[BLE/Network] Peripheral disconnect / address=', device.address);
+                self.emit('disconnect', device);
+              });
+
+              logger.debug('[BLE/Network] BLE with service uuid is found and device is created', device);
+              self.emit('discovered', device);
+
+              self.device = device;
+
+              return false;
+            }
           });
 
-          return done();
+          return cb && cb(null, self.device);
         });
       });
-    },function (err, results) {
-      if (results) {
-        logger.debug('results', results);
-      }
-      logger.debug('founds', founds);
-      self.underDiscover = false;
-      return cb && cb(null, founds);
-    });
+    } else {
+      logger.warn('[BLE/Network] On discovering, peripheral is not discovered');
+      self.emit('discovered', 'no device');
+
+      return cb && cb(new Error('ble device is not discovered'));
+    }
   });
 
   logger.debug('noble.state', noble.state);

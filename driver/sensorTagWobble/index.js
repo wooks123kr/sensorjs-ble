@@ -29,6 +29,7 @@ SensorTagWobble.properties = {
     data:   'f000aa1104514000b000000000000000',
     period: 'f000aa1304514000b000000000000000'
   },
+  bleLocalName: 'SensorTag',
   id: '{model}-{address}'
 };
 
@@ -114,8 +115,8 @@ SensorTagWobble.prototype._get = function (type) {
 
   type = type || 'data';
 
-  if (this.deviceHandle) {
-    logger.debug('w/ deviceHandle');
+  if (this.deviceHandle && this.deviceHandle.state === 'connected') {
+    logger.debug('[SensorTagWobble] W/ deviceHandle', this.deviceHandle.state);
     this.readWobbleData(function (err, data) {
       if (err) {
         self.emit(type, {status: 'error', id : self.id, message: err || 'read error'});
@@ -131,19 +132,15 @@ SensorTagWobble.prototype._get = function (type) {
     logger.debug('getDevice', this.info);
 
     options = {
-      models: [this.model],
-      serviceUUIDs: [SensorTagWobble.properties.ble.service]
+      model: this.model,
+      serviceUUID: SensorTagWobble.properties.ble.service
     };
 
-    ble.getDevice(this.info.device.address, options, function (err, devices) {
-      if (!err && !_.isEmpty(devices)) {
+    ble.getDevice(this.info.device.address, options, function (err, device) {
+      if (!err && device) {
         logger.debug('got device');
-        if (devices[0].deviceHandle) {
-          //property : ex) 'sensorTagWobble-bc6a29ac16ca'
-          self.deviceHandle = devices[0].deviceHandle[self.model + '-' + self.info.device.address];
-        } else {
-          self.deviceHandle = devices[0];
-        }
+
+        self.deviceHandle = device.deviceHandle[self.info.id];
 
         ble.once('disconnect', function() {
           logger.debug('disconnect', self.deviceHandle);
@@ -161,6 +158,15 @@ SensorTagWobble.prototype._get = function (type) {
         });
       }
     });
+  }
+};
+
+SensorTagWobble.prototype._clear = function () {
+  logger.info('[SensorTagWobble] clearing ble sensor', this.info.id, this.deviceHandle);
+
+  if (this.deviceHandle && typeof this.deviceHandle.disconnect) {
+    this.deviceHandle.disconnect();
+    delete this.deviceHandle;
   }
 };
 
