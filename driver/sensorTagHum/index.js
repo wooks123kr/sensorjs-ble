@@ -97,10 +97,10 @@ SensorTagHum.prototype._get = function () {
         self.emit('data', {status: 'error', id : self.id, message: err || 'error on getting device'});
       } else {
         if (device) {
-          logger.debug('[SensorTagHum] Device is ready - self.deviceHandle.services',
-              self.deviceHandle.services);
 
           self.deviceHandle = device.deviceHandle[self.info.id];
+          logger.debug('[SensorTagHum] Device is ready - self.deviceHandle.services',
+              self.deviceHandle && self.deviceHandle.services);
 
           self.readHumData(function (err, data) {
             if (err) {
