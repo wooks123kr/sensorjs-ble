@@ -1,15 +1,15 @@
 {
   "name": "sensorjs-ble",
   "description": "BLE sensor networks and drivers for sensorjs",
-  "version": "0.0.2-0",
+  "version": "0.0.2-1",
   "author": {
     "name": "daliworks",
     "email": "dev@daliworks.net"
   },
   "dependencies": {
-    "log4js": "0.6.16",
-    "lodash": "~2.4.1",
-    "async": "~0.9.0",
+    "async": "0.9",
+    "lodash": "2.4",
+    "log4js": "0.6",
     "noble": "0.3.5"
   },
   "repository": {

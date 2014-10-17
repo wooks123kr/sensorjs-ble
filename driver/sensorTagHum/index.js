@@ -19,6 +19,7 @@ SensorTagHum.properties = {
   dataTypes: ['humidity'],
   onChange: false, // FIXME: app.listen
   discoverable: true,
+  addressable: false,
   recommendedInterval: 20000,
   validCachedValueTimeout: 7000,
   maxInstances: 1,
@@ -29,7 +30,8 @@ SensorTagHum.properties = {
     data: 'f000aa2104514000b000000000000000'
   },
   bleLocalName: 'SensorTag',
-  id: '{model}-{address}'
+  id: '{model}-{address}',
+  category: 'sensor'
 };
 
 util.inherits(SensorTagHum, Sensor);

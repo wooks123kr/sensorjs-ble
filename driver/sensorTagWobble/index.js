@@ -19,6 +19,7 @@ SensorTagWobble.properties = {
   dataTypes: ['onoff'],
   onChange: true, // FIXME: app.listen
   discoverable: true,
+  addressable: false,
   recommendedInterval: 1000, // 1000 miliseconds 
   validCachedValueTimeout: 7000,
   maxInstances: 1,
@@ -30,7 +31,8 @@ SensorTagWobble.properties = {
     period: 'f000aa1304514000b000000000000000'
   },
   bleLocalName: 'SensorTag',
-  id: '{model}-{address}'
+  id: '{model}-{address}',
+  category: 'sensor'
 };
 
 util.inherits(SensorTagWobble, Sensor);
