@@ -31,7 +31,7 @@ SensorTagWobble.properties = {
     period: 'f000aa1304514000b000000000000000'
   },
   bleLocalName: 'SensorTag',
-  id: '{model}-{address}',
+  idTemplate: '{model}-{deviceAddress}',
   category: 'sensor'
 };
 
