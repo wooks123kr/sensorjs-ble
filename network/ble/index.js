@@ -10,9 +10,9 @@ var sensorDriver = require('../../index'),
     Network = sensorDriver.Network,  
     Device = sensorDriver.Device;
 
-var DEVICE_SCAN_TIMEOUT = 10000,
-    DEVICE_CONN_TIMEOUT = 10000,
-    SERVICE_DISCOVERY_TIMEOUT = 15000;
+var DEVICE_SCAN_TIMEOUT = 3000,
+    DEVICE_CONN_TIMEOUT = 5000,
+    SERVICE_DISCOVERY_TIMEOUT = 5000;
 
 var logger = Network.getLogger();
 
@@ -109,9 +109,12 @@ Ble.prototype.discover = function (driverName/*or model*/, options, cb) {
       self.emit('discover', 'scanStop');
     }
 
+    logger.debug('[BLE/Network] peripherals ' + peripherals);
+    logger.debug('[BLE/Network] models ' + models);
     _.forEach(peripherals, function (peripheral) {
       _.forEach(models, function (model) {
         var props = sensorDriver.getSensorProperties(model);
+    logger.debug('[BLE/Network] props ' + props);
 
         if (peripheral.advertisement && peripheral.advertisement.localName && props && props.bleLocalName &&
             peripheral.advertisement.localName.toUpperCase() === props.bleLocalName.toUpperCase()) {

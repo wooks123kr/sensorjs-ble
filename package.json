@@ -9,8 +9,9 @@
   "dependencies": {
     "async": "0.9",
     "lodash": "2.4",
+    "assert": "*",
     "log4js": "0.6",
-    "noble": "0.3.5"
+    "noble": "1.1.0"
   },
   "repository": {
     "type": "git",

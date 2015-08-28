@@ -15,12 +15,13 @@ function initNetworks() {
 }
 
 function initDrivers() {
-  var sensorTagAcc, sensorTagHum, sensorTagWobble;
+  var sensorTagAcc, sensorTagHum, sensorTagWobble, fitBand;
 
   try {
     sensorTagAcc = require('./driver/sensorTagAcc');
     sensorTagHum = require('./driver/sensorTagHum');
     sensorTagWobble = require('./driver/sensorTagWobble');
+    fitBand = require('./driver/fitBand');
   } catch(e) {
     console.error('[ble] init drivers error', e);
   }
@@ -28,7 +29,8 @@ function initDrivers() {
   return {
     sensorTagAcc: sensorTagAcc,
     sensorTagHum: sensorTagHum,
-    sensorTagWobble: sensorTagWobble
+    sensorTagWobble: sensorTagWobble,
+    fitBand: fitBand
   };
 }
 
@@ -37,7 +39,8 @@ module.exports = {
   drivers: {
     sensorTagAcc: ['sensorTagAcc'],
     sensorTagHum: ['sensorTagHum'],
-    sensorTagWobble: ['sensorTagWobble']
+    sensorTagWobble: ['sensorTagWobble'],
+    fitBand: ['Fitband']
   },
   initNetworks: initNetworks,
   initDrivers: initDrivers

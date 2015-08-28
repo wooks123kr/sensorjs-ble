@@ -30,7 +30,7 @@ SensorTagHum.properties = {
     data: 'f000aa2104514000b000000000000000'
   },
   bleLocalName: 'SensorTag',
-  idTemplate: '{model}-{deviceAddress}',
+  idTemplate: '{deviceAddress}-{type}-{sequence}',
   category: 'sensor'
 };
 
