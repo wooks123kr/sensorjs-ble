@@ -53,6 +53,7 @@ FitBand.prototype.readStepCount = function(cb){
   logger.debug('configChar : ' , configChar);
   if (dataChar && configChar) {
     logger.debug('enable data'); 
+    /*
     dataChar.notify(true, function(err){
       if (err){
         logger.error("char.notify ERROR EEEEEEEEEEEEEEEEE");
@@ -60,7 +61,8 @@ FitBand.prototype.readStepCount = function(cb){
       }
       logger.debug("dataChar.notify SUCCEED ");
     });
-    configChar.on('data', function callback(data, isNotification){
+    */
+    configChar.once('data', function callback(data, isNotification){
       logger.info("************************************");
       logger.debug('config data read'); 
       if (!data){
@@ -68,17 +70,26 @@ FitBand.prototype.readStepCount = function(cb){
         return cb && cb(new Error('ERROR : data is invalid'), null);
       }
       logger.info("data 0(" + data.length + ") ["+ data.toJSON() + "] received notification? = " + isNotification);
+      /*
+      dataChar.read(function(err, data){
+        if (err){
+          logger.error("dataChar.read ERROR EEEEEEEEEEEEEEEEE");
+          return;
+        }
+        logger.debug("dataChar.read SUCCEED ");
+      });
+      */
       var steps = band.processData(data);
       return cb && cb (null, steps);
     });
 
+    var opcode = 0xC6;
     // subscribe notification
     this.deviceHandle.writeHandle(0x0053, new Buffer([0x01,0x00]), false, function(err){
       if (err){
         logger.error("failed to subscribe notification");
         return;
       }
-      var opcode = 0xC6;
       dataChar.write(new Buffer([opcode, 0x01,0x08,0x08]), false, function callback(err){
         if (err){
           logger.error("failed to write command");
