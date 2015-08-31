@@ -16,7 +16,7 @@ function FitBand(sensorInfo, options) {
     this.model = sensorInfo.model;
   } 
   ble = sensorDriver.getNetwork('ble');
-  logger.error('Fitband', sensorInfo);
+  logger.info('Fitband', sensorInfo);
 }
 
 FitBand.properties = {
@@ -115,7 +115,7 @@ FitBand.prototype._get = function () {
         self.emit('data', {status: 'error', id : self.id, message: err || 'read error'});
       } else {
         result[_.first(FitBand.properties.dataTypes)] = data;
-        self.emit('data', {status: 'ok', id: self.id, result: result});
+        self.emit('data', {status: 'ok', id: self.id, mac: self.info.device.address, result: result});
       }
     });
   } else {
@@ -133,7 +133,7 @@ FitBand.prototype._get = function () {
               self.emit('data', {status: 'error', id : self.id, message: err || 'read error'});
             } else {
               result[_.first(FitBand.properties.dataTypes)] = data;
-              self.emit('data', {status: 'ok', id : self.id, result: result});
+              self.emit('data', {status: 'ok', id : self.id, mac: self.info.device.address, result: result});
             }
           });
         }
