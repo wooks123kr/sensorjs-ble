@@ -7,7 +7,7 @@
 var assert = require('assert'),
     util = require('util'),
     _ = require("lodash");
-var logger = require('../../../config/environment').getLogger();
+var logger = require('log4js').getLogger('band');
 
 var OPCODE_CURRENT_TIME = 0x89;
 var OPCODE_CURRENT_STEPS = 0xc6;
@@ -31,7 +31,7 @@ var checksum = function(buffer){
       return result ^ byteValue;
   });
   return checksum;
-}
+};
 
 /**
  * make current time into buffer data
@@ -39,7 +39,7 @@ var checksum = function(buffer){
  */
 var makeTime = function(){
     var timeDataLen = 0x07;
-    var currentTime = _.now();
+    var currentTime = new Date();
     var year = currentTime.getFullYear() ;
     var month = currentTime.getMonth();
     var date = currentTime.getDate();
@@ -47,9 +47,11 @@ var makeTime = function(){
     var minutes = currentTime.getMinutes();
     var seconds = currentTime.getSeconds();
     var milliseconds = currentTime.getMilliseconds();
-    var dayOfWeek = currentTime.getDay();
+    var dayOfWeek = currentTime.getDay() === 0 ? 7 : currentTime.getDay();
+    dayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek;
+    var checksum = year-2000 ^ month ^ date ^ hours ^ minutes ^ seconds ^ dayOfWeek;
     var buf = new Buffer([timeDataLen, year-2000, month, date, hours, minutes, seconds, dayOfWeek, 0x00]); // append checksum byte
-    buf[timeDateLen] = checksum(buf);
+    buf[timeDataLen] = checksum(buf);
     return buf;
 };
 
@@ -76,18 +78,9 @@ var timeInMillis = function(buf){
 
 var isStepCount = function isStepCount(data){
   return data.length > 4;
-}
+};
 
-module.exports = {
-  OPCODE_CURRENT_TIME : OPCODE_CURRENT_TIME,
-  OPCODE_CURRENT_STEPS : OPCODE_CURRENT_STEPS,
-  RESPONSE_CURRENT_TIME : RESPONSE_CURRENT_TIME,
-
-  checksum : checksum,
-  makeTime : makeTime,
-  timeInMillis : timeInMillis,
-  isStepCount : isStepCount,
-  processData : function(buf){
+var processData = function(buf){
     var idx = 0;
     var res = buf.readUInt8(idx++);
     logger.debug("buffer length = %d", buf.length);
@@ -98,26 +91,29 @@ module.exports = {
       var segmentLen = 3;
       var steps = readSegmentData(buf, idx, segmentLen);
       idx += 3;
-      logger.debug("steps = 0x" + steps.toString(16));
+      logger.debug("steps = " + steps);
       var calorie= readSegmentData(buf, idx, segmentLen);
       idx += 3;
-      //logger.debug("calorie= 0x" + calorie.toString(16));
       var kilos= readSegmentData(buf, idx, segmentLen);
       idx += 3;
-      //logger.debug("kilos= 0x" + kilos.toString(16));
       var checksum = buf.readUInt8(idx);
       logger.debug("checksum = " + len.toString(16));
-      /*
-      var body = {
-        text: "오늘 총걸음수는 " + steps+ "걸음 입니다.\n"  +
-              "오늘 소모한 총칼로리는 " + calorie+ "칼로리 입니다.\n"  +
-              "오늘 총 걸은 거리는 " + kilos+ "km 입니다.\n",
-        username : 'wooks123kr'
-      };
-      */
       return steps;
-    }else{
+    }else if (res === 0x06){  // negative response for read device data
+      return null;
+    }else {
       return null;
     }
-  }
-}
+};
+
+module.exports = {
+  OPCODE_CURRENT_TIME : OPCODE_CURRENT_TIME,
+  OPCODE_CURRENT_STEPS : OPCODE_CURRENT_STEPS,
+  RESPONSE_CURRENT_TIME : RESPONSE_CURRENT_TIME,
+
+  checksum : checksum,
+  makeTime : makeTime,
+  timeInMillis : timeInMillis,
+  isStepCount : isStepCount,
+  processData : processData
+};

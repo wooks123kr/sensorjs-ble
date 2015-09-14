@@ -100,11 +100,11 @@ Ble.prototype.discover = function (driverName/*or model*/, options, cb) {
     }
 
     noble.on('discover', onDiscover);
-
     logger.debug('filter = ' + util.inspect(filter));
     noble.startScanning(filter);
 
     self.scanTimer = setTimeout(function () {
+      logger.debug('startScan(): scan timed out ' );
       self.scanTimer = null;
       noble.removeListener('discover', onDiscover);
       noble.stopScanning();
@@ -240,17 +240,23 @@ Ble.prototype._discover = function (addr, model, serviceUUID, options, cb) {
 
     if (addr === peripheral.uuid) {
       self.peripheral = peripheral;
-      logger.debug('on discover - discovered', peripheral.uuid);
-    }
-    if (self.scanTimer) { // reschedule timer
-      clearTimeout(self.scanTimer);
-      logger.debug('extends timer trigger time');
-      self.scanTimer = setTimeout(function () {
-        self.scanTimer = null;
-        noble.removeListener('discover', onDiscover);
-        logger.debug('onDiscover(): scan timed out ' );
-        noble.stopScanning();
-      }, DEVICE_SCAN_TIMEOUT);
+      logger.debug('on discover - discovered', peripheral.uuid + ' stopScanning()');
+      if (self.scanTimer){
+        clearTimeout(self.scanTimer);
+      }
+      noble.removeListener('discover', onDiscover);
+      noble.stopScanning();
+    }else{
+      if (self.scanTimer) { // reschedule timer
+        clearTimeout(self.scanTimer);
+        logger.debug('extends timer trigger time');
+        self.scanTimer = setTimeout(function () {
+          self.scanTimer = null;
+          noble.removeListener('discover', onDiscover);
+          logger.debug('onDiscover(): scan timed out ' );
+          noble.stopScanning();
+        }, DEVICE_SCAN_TIMEOUT);
+      }
     }
   };
 
@@ -261,12 +267,13 @@ Ble.prototype._discover = function (addr, model, serviceUUID, options, cb) {
     }
 
     noble.on('discover', onDiscover);
+    logger.debug('filter = ' + util.inspect(serviceUUID));
     noble.startScanning(serviceUUID);
 
     self.scanTimer = setTimeout(function () {
+      logger.debug('startScan(): scan timed out ' );
       self.scanTimer = null;
       noble.removeListener('discover', onDiscover);
-      logger.debug('startScan(): scan timed out ' );
       noble.stopScanning();
     }, DEVICE_SCAN_TIMEOUT);
   };
@@ -364,8 +371,8 @@ Ble.prototype._discover = function (addr, model, serviceUUID, options, cb) {
             return; //do nothing already timeout
           }
 
-          logger.debug('[BLE/Network] Services are discovered', util.inspect(services));
-          logger.debug('[BLE/Network] Services characteristics' , util.inspect(services, {showHidden : false, depth: 3}));
+          //logger.debug('[BLE/Network] Services are discovered', util.inspect(services));
+          //logger.debug('[BLE/Network] Services characteristics' , util.inspect(services, {showHidden : false, depth: 3}));
 
           //props = sensorDriver.getSensorProperties(model);
 
