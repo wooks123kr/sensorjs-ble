@@ -1,5 +1,3 @@
-'use strict';
-
 var util = require('util'),
     fitband = require('./band'),
     _ = require('lodash');
@@ -21,7 +19,7 @@ function FitBand(sensorInfo, options) {
 
 FitBand.properties = {
   supportedNetworks: ['ble'],
-  dataTypes: ['stepCount', 'sleepStage', 'batteryGauge'],
+  dataTypes: ['stepCount', 'weeklyData', 'sleepStage', 'batteryGauge'],
   onChange: false, // FIXME: app.listen
   discoverable: true,
   recommendedInterval: 15000,
@@ -68,10 +66,10 @@ FitBand.prototype.readWeeklyStepCount = function(cb){
   }
 
   // TODO: 매년 1월 1일은 어떻게 될 것인가?
-  // 전날 12:59:59:999 로 정함 
+  // 전날 12:59:59:000 로 정함 
   var now = new Date();
   var ellapsedTimeInMillis = (now.getHours() * 60 * 60 + now.getMinutes()*60 + now.getSeconds()) * 1000  + now.getMilliseconds();
-  var yesterday = new Date(now.getTime() - ellapsedTimeInMillis - 1);
+  var yesterday = new Date(now.getTime() - ellapsedTimeInMillis - 1000);
 
   logger.debug('readStepWeeklyCount() id: ' , this.deviceHandle.address);
   if (dataChar && configChar) {
@@ -87,7 +85,7 @@ FitBand.prototype.readWeeklyStepCount = function(cb){
       if (steps === undefined || steps === null){
         return cb && cb(new Error('ERROR : cannot read data from device'), null);
       }
-      var result = { 'stepCount' : steps, 'ctime' : yesterday.getTime() };
+      var result = { 'steps' : steps, 'ctime' : yesterday };
       return cb && cb (null, result);
     };
 
@@ -146,7 +144,8 @@ FitBand.prototype.readStepCount = function(cb){
       if (steps === undefined || steps === null){
         return cb && cb(new Error('ERROR : cannot read data from device'), null);
       }
-      return cb && cb (null, steps);
+      var result = { 'steps' : steps, 'ctime': new Date() };
+      return cb && cb (null, result);
     };
 
     logger.error('configChar listeners' + util.inspect(configChar.listeners('data')));
@@ -190,19 +189,12 @@ FitBand.prototype._get = function () {
     logger.debug('[FitBand] deviceHandle(', this.deviceHandle.address, '): ' , this.deviceHandle.state);
 
     this.readStepCount(function (err, data) {
-      if (err) {
-        self.emit('data', {status: 'error', id : self.id, message: err || 'read error'});
-      } else {
-        result[_.first(FitBand.properties.dataTypes)] = data;
-        self.emit('data', {status: 'ok', id: self.id, mac: self.info.device.address, type: 'stepCount', result: result});
-      }
+      if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); }
+      result[_.first(FitBand.properties.dataTypes)] = data;
       self.readWeeklyStepCount(function (err, data) {
-        if (err) {
-          self.emit('weeklyData', {status: 'error', id : self.id, message: err || 'read error'});
-        } else {
-          result[_.first(FitBand.properties.dataTypes)] = data;
-          self.emit('weeklyData', {status: 'ok', id: self.id, mac: self.info.device.address, type: 'weeklyStepCount', result: result});
-        }
+        if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); }
+        result.weeklyData = data;
+        self.emit('data', {status: 'ok', id: self.id, mac: self.info.device.address, type: 'stepCount', result: result});
       });
     });
     this.readBatteryGauge(function (err, data) {
@@ -217,8 +209,17 @@ FitBand.prototype._get = function () {
   } else {
     if ( this.deviceHandle ) {
       logger.debug('[FitBand] W/ deviceHandle('+ self.info.device.address+'):' + self.deviceHandle.state);
+      if (self.deviceHandle.state === 'disconnecting'){
+        logger.debug('[FitBand] trying to disconnecting('+ self.info.device.address+')');
+        ble.disconnect(self.deviceHandle, function(error){ 
+          if (error){
+            self.emit('error', {id: 'Fitband-'+self.info.device.address, mac: self.info.device.address, message: 'state is disconnecting'});
+            return;
+          }
+        });
+        return;
+      }
     }
-    //logger.debug('[FitBand] _get(): this = ' + util.inspect(self));
     if ( this.info) logger.debug('[FitBand] _get(): trying to getDevice() again: ' +self.info.device.address);
     // scan(search) options
     options = {
@@ -230,19 +231,12 @@ FitBand.prototype._get = function () {
         logger.debug('[FitBand] _get(): getDevice().callback() self = ' + util.inspect(self));
         self.deviceHandle = device.deviceHandle[self.info.id];
         self.readStepCount(function (err, data) {
-          if (err) {
-            self.emit('data', {status: 'error', id : self.id, message: err || 'read error'});
-          } else {
-            result[_.first(FitBand.properties.dataTypes)] = data;
-            self.emit('data', {status: 'ok', id : self.id, mac: self.info.device.address, type: 'stepCount', result: result});
-          }
+          if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); }
+          result[_.first(FitBand.properties.dataTypes)] = data;
           self.readWeeklyStepCount(function (err, data) {
-            if (err) {
-              self.emit('weeklyData', {status: 'error', id : self.id, message: err || 'read error'});
-            } else {
-              result[_.first(FitBand.properties.dataTypes)] = data;
-                  self.emit('weeklyData', {status: 'ok', id: self.id, mac: self.info.device.address, type: 'weeklyStepCount', result: result});
-            }
+            if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); }
+            result.weeklyData = data;
+            self.emit('data', {status: 'ok', id: self.id, mac: self.info.device.address, type: 'stepCount', result: result});
           });
         });
         self.readBatteryGauge(function (err, data) {
@@ -254,7 +248,10 @@ FitBand.prototype._get = function () {
             self.emit('battery', {status: 'ok', id: self.id, mac: self.info.device.address, type: 'batteryGauge', result: result});
           }
         });
+      }else if (err && !device){
+        self.emit('error', {id: 'Fitband-'+self.info.device.address, mac: self.info.device.address, message: 'not discovered'});
       }
+
     });
   }
 };
