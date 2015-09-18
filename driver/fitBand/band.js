@@ -2,8 +2,6 @@
  * Fastgo Fitband specific data
  */
 
-'use strict';
-
 var assert = require('assert'),
     util = require('util'),
     _ = require("lodash");
@@ -16,6 +14,7 @@ var HANDLE_READ_BATTERY = 0x0036;
 var HANDLE_SET_NOTIFICATION = 0x0053;
 
 var readSegmentData = function (buf, idx, segmentLen){
+  'use strict';
   var data = _.reduceRight(buf.slice(idx, idx + segmentLen), function(result, byteValue, index){
         return result + (byteValue << ((segmentLen - 1 -index) * 8));
       });
@@ -26,6 +25,7 @@ var readSegmentData = function (buf, idx, segmentLen){
  * bitwise xor checksum
  */
 var checksum = function(buffer){
+  'use strict';
   var len = buffer.readUInt8(0); // read length of buffer data
   var checksum = _.reduce(buffer.slice(1, 1 + len), function(result, byteValue, index){
       return result ^ byteValue;
@@ -38,21 +38,22 @@ var checksum = function(buffer){
  * @return Buffer
  */
 var makeTime = function(){
-    var timeDataLen = 0x07;
-    var currentTime = new Date();
-    var year = currentTime.getFullYear() ;
-    var month = currentTime.getMonth();
-    var date = currentTime.getDate();
-    var hours = currentTime.getHours();
-    var minutes = currentTime.getMinutes();
-    var seconds = currentTime.getSeconds();
-    var milliseconds = currentTime.getMilliseconds();
-    var dayOfWeek = currentTime.getDay() === 0 ? 7 : currentTime.getDay();
-    dayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek;
-    var checksum = year-2000 ^ month ^ date ^ hours ^ minutes ^ seconds ^ dayOfWeek;
-    var buf = new Buffer([timeDataLen, year-2000, month, date, hours, minutes, seconds, dayOfWeek, 0x00]); // append checksum byte
-    buf[timeDataLen] = checksum(buf);
-    return buf;
+  'use strict';
+  var timeDataLen = 0x07;
+  var currentTime = new Date();
+  var year = currentTime.getFullYear() ;
+  var month = currentTime.getMonth();
+  var date = currentTime.getDate();
+  var hours = currentTime.getHours();
+  var minutes = currentTime.getMinutes();
+  var seconds = currentTime.getSeconds();
+  var milliseconds = currentTime.getMilliseconds();
+  var dayOfWeek = currentTime.getDay();
+  dayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek;
+  var checksum = year-2000 ^ month ^ date ^ hours ^ minutes ^ seconds ^ dayOfWeek;
+  var buf = new Buffer([timeDataLen, year-2000, month, date, hours, minutes, seconds, dayOfWeek, 0x00]); // append checksum byte
+  buf[timeDataLen] = checksum(buf);
+  return buf;
 };
 
 /**
@@ -60,20 +61,21 @@ var makeTime = function(){
  * @return time in millis
  */
 var timeInMillis = function(buf){
-    var idx = 0;
-    var res = buf.readUInt8(idx++);
-    assert.equal(res, RESPONSE_CURRENT_TIME);
-    var len = buf.readUInt8(idx++);
-    assert.equals(len, 7);
-    var year = buf.readUInt8(idx++) + 2000;
-    var month = buf.readUInt8(idx++);
-    var day = buf.readUInt8(idx++);
-    var hour = buf.readUInt8(idx++);
-    var minute = buf.readUInt8(idx++);
-    var second = buf.readUInt8(idx++);
-    var date = new Date(year, month, day, hour, minute, second, 0);
-    logger.debug('date: ' + date);
-    return date.getTime();
+  'use strict';
+  var idx = 0;
+  var res = buf.readUInt8(idx++);
+  assert.equal(res, RESPONSE_CURRENT_TIME);
+  var len = buf.readUInt8(idx++);
+  assert.equals(len, 7);
+  var year = buf.readUInt8(idx++) + 2000;
+  var month = buf.readUInt8(idx++);
+  var day = buf.readUInt8(idx++);
+  var hour = buf.readUInt8(idx++);
+  var minute = buf.readUInt8(idx++);
+  var second = buf.readUInt8(idx++);
+  var date = new Date(year, month, day, hour, minute, second, 0);
+  logger.debug('date: ' + date);
+  return date.getTime();
 };
 
 var isStepCount = function isStepCount(data){
