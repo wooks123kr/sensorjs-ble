@@ -189,10 +189,10 @@ FitBand.prototype._get = function () {
     logger.debug('[FitBand] deviceHandle(', this.deviceHandle.address, '): ' , this.deviceHandle.state);
 
     this.readStepCount(function (err, data) {
-      if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); }
+      if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); return;}
       result[_.first(FitBand.properties.dataTypes)] = data;
       self.readWeeklyStepCount(function (err, data) {
-        if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); }
+        if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); return;}
         result.weeklyData = data;
         self.emit('data', {status: 'ok', id: self.id, mac: self.info.device.address, type: 'stepCount', result: result});
       });
@@ -211,11 +211,21 @@ FitBand.prototype._get = function () {
       logger.debug('[FitBand] W/ deviceHandle('+ self.info.device.address+'):' + self.deviceHandle.state);
       if (self.deviceHandle.state === 'disconnecting'){
         logger.debug('[FitBand] trying to disconnecting('+ self.info.device.address+')');
+        self.disconnectTimer = setTimeout(function () {
+          logger.debug('disconnect(): disconnecting timed out ' );
+          self.disconnectTimer = null;
+          self.deviceHandle.state = 'disconnected';
+        }, 1000);
         ble.disconnect(self.deviceHandle, function(error){ 
+          if (self.disconnectTimer){
+            clearTimeout(self.disconnectTimer);
+            self.disconnectTimer = null;
+          }
           if (error){
             self.emit('error', {id: 'Fitband-'+self.info.device.address, mac: self.info.device.address, message: 'state is disconnecting'});
             return;
           }
+          logger.debug('[FitBand] ' + self.info.device.address + ' disconnected');
         });
         return;
       }
@@ -231,10 +241,10 @@ FitBand.prototype._get = function () {
         logger.debug('[FitBand] _get(): getDevice().callback() self = ' + util.inspect(self));
         self.deviceHandle = device.deviceHandle[self.info.id];
         self.readStepCount(function (err, data) {
-          if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); }
+          if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); return;}
           result[_.first(FitBand.properties.dataTypes)] = data;
           self.readWeeklyStepCount(function (err, data) {
-            if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); }
+            if (err) { self.emit('data', {status: 'error', id : self.id, message: err || 'read error'}); return;}
             result.weeklyData = data;
             self.emit('data', {status: 'ok', id: self.id, mac: self.info.device.address, type: 'stepCount', result: result});
           });
