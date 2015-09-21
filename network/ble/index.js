@@ -28,11 +28,6 @@ Ble.prototype.getDevice = function (addr, options, cb) {
     cb = options;
   }
 
-  //logger.debug("noble._peripherals: "+util.inspect(noble._peripherals));
-  /*
-  if (this.device && this.device.deviceHandle &&
-      noble._peripherals[addr] && noble._peripherals[addr].state === 'connected') {
-      */
   if (this.device && this.device.deviceHandle && this.device.addr === addr &&
       noble._peripherals[addr] && noble._peripherals[addr].state === 'connected') {
     logger.debug('[BLE/Network] Device:' + addr + ' is already connected');
@@ -45,17 +40,22 @@ Ble.prototype.getDevice = function (addr, options, cb) {
   }
 
   // TODO: connect directly without scanning if the sensor device(peripheral) is registered
-  if (this.device && this.device.deviceHandle && this.device.addr === addr && 
-      noble._peripherals[addr]) {
-    logger.debug('[BLE/Network] getDevice(' + addr + ') this.device: ' + util.inspect(this.device));
+  if (self.device && self.device.deviceHandle && self.device.address === addr && 
+      self.device.deviceHandle.service && 
+    _.find(self.device.deviceHandle.service.characteristics, {uuid: self.properties.ble.data})) {
     logger.debug('[BLE/Network] getDevice(' + addr + ') state: ' + noble._peripherals[addr].state);
-    this._connect(this.device.deviceHandle, function(err){
-      return cb && cb(err, this.device);
+    this._connect(this.device.deviceHandle, function(err, device){
+      logger.debug('[BLE/Network] _connect(' + addr + ') connect callback');
+      if (err){
+        logger.error('[BLE/Network] _connect(' + addr + ') connect callback');
+      }
+      return cb && cb(err, self.device);
     });  
     return;
   }
 
   this._discover(addr, options.model, options.serviceUUID, options, function (err, device) {
+    logger.debug('[Ble/Network] _discover(' + err + ', ' + device +')');
     self.underDiscover = false;
     if (err){
       return cb && cb(err, {address: addr, url: 'sensorjs:///ble/addr/Fitband/Fitband-'+addr});
@@ -181,13 +181,21 @@ Ble.prototype.discover = function (driverName/*or model*/, options, cb) {
 };
 
 Ble.prototype.disconnect = function(peripheral, cb){
-  try { peripheral.disconnect(); } catch (e) {}
+  try { 
+    peripheral.disconnect(function(error){
+      logger.debug('peripheral is disconnected');
+    });
+  } catch (e) {}
 };
 
 Ble.prototype._connect = function(peripheral, cb){
   var self = this;
   var connTimer = setTimeout(function () {
-    try { peripheral.disconnect(); } catch (e) {}
+    try { 
+      peripheral.disconnect(function(error){
+        logger.debug('[BLE/Network] _connect() : timeout '+peripheral.addr + ' disconnected');
+      }); 
+    } catch (e) {}
 
     connTimer = null;
 
@@ -387,6 +395,7 @@ Ble.prototype._discover = function (addr, model, serviceUUID, options, cb) {
           //props = sensorDriver.getSensorProperties(model);
 
           _.forEach(services, function (service) {
+            logger.debug('[BLE/Network] service.uuid : ' + service.uuid);
             if (service.uuid === props.ble.service) {
               device = new Device(self, peripheral.uuid,
                           [{id:model + '-' + peripheral.uuid,
@@ -403,10 +412,11 @@ Ble.prototype._discover = function (addr, model, serviceUUID, options, cb) {
 
               self.device = device;
 
-              return false;
+              return false; // break;
             }
           });
 
+          logger.debug('[BLE/Network] service discovery finished', self.device);
           return cb && cb(null, self.device);
         });
       });
