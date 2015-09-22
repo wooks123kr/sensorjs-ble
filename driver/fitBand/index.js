@@ -1,5 +1,6 @@
 var util = require('util'),
     fitband = require('./band'),
+    Promise = require('bluebird'),
     _ = require('lodash');
 
 var sensorDriver = require('../../index'),
@@ -7,6 +8,11 @@ var sensorDriver = require('../../index'),
     logger = Sensor.getLogger();
 
 var ble;
+
+// disconnect timeout
+var DISCONNECT_TIMEOUT = 1000;
+// timeout for reading activity 
+var READ_TIMEOUT = 5000;
 
 function FitBand(sensorInfo, options) {
   Sensor.call(this, sensorInfo, options);
@@ -58,6 +64,13 @@ var count = 0;
 // enable시키는 부분을 굳이 2번할 필요없기 때문이다.
 FitBand.prototype.readWeeklyStepCount = function(cb){
   var service, dataChar, configChar;
+  var self = this;
+
+  if (self.readTimer){
+    logger.warn('previous read request not finished');
+    return cb && cb(new Error('previous read request not finished'), null);
+  }
+
   service = this.deviceHandle && this.deviceHandle.services &&
         _.find(this.deviceHandle.services, {uuid: FitBand.properties.ble.service});
   if (service && service.characteristics) {
@@ -72,55 +85,69 @@ FitBand.prototype.readWeeklyStepCount = function(cb){
   var yesterday = new Date(now.getTime() - ellapsedTimeInMillis - 1000);
 
   logger.debug('readStepWeeklyCount() id: ' , this.deviceHandle.address);
-  if (dataChar && configChar) {
-    logger.error('enable data: '+count++);
-    var notificationCallback = function(data,  isNotification){
-      if (!data){
-        logger.error("ERROR : data is invalid");
-        return cb && cb(new Error('ERROR : data is invalid'), null);
-      }
-
-      //logger.debug("data 0(" + data.length + ") ["+ data.toJSON() + "] received notification? = " + isNotification);
-      var steps = fitband.processData(data);
-      if (steps === undefined || steps === null){
-        return cb && cb(new Error('ERROR : cannot read data from device'), null);
-      }
-      var result = { 'steps' : steps, 'ctime' : yesterday };
-      return cb && cb (null, result);
-    };
-
-    logger.error('configChar listeners' + util.inspect(configChar.listeners('data')));
-    //logger.error('configChar # of listeners' + util.inspect(configChar.listenerCount('data')));
-    configChar.removeAllListeners(['data']);
-    configChar.once('error', function(error){
-      logger.error('configChar error ' + error);
-    });
-    configChar.once('data', notificationCallback);
-
-    var opcode = fitband.OPCODE_CURRENT_STEPS ;
-    var dayOfWeek = yesterday.getDay();
-    dayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek;
-    logger.debug('the day of week of yesterday : ' + dayOfWeek);
-    var buffer = new Buffer([opcode, 0x01, dayOfWeek, dayOfWeek ]);
-    try{
-      dataChar.write(buffer, false, function callback(err){
-        if (err){
-          logger.error("failed to write command");
-          return;
-        }
-        logger.info("write command: " + opcode.toString(16) + " succeed");
-       });
-    }catch (e){
-        logger.error("failed to write command: " + e);
-        return cb && cb(new Error('ERROR : cannot write opcommand ' + opcode.toString(16)), null);
-    }
-  }else{
+  if (!dataChar || !configChar) {
     return cb && cb(new Error('cannot read steps'), null);
+  }
+  logger.error('enable data: '+count++);
+  var notificationCallback = function(data,  isNotification){
+    clearTimeout(self.readTimer);
+    self.readTimer = null;
+    if (!data){
+      logger.error("ERROR : data is invalid");
+      return cb && cb(new Error('ERROR : data is invalid'), null);
+    }
+
+    //logger.debug("data 0(" + data.length + ") ["+ data.toJSON() + "] received notification? = " + isNotification);
+    var steps = fitband.processData(data);
+    if (steps === undefined || steps === null){
+      return cb && cb(new Error('ERROR : cannot read data from device'), null);
+    }
+    var result = { 'steps' : steps, 'ctime' : yesterday };
+    return cb && cb (null, result);
+  };
+
+  self.readTimer = setTimeout(function(){
+    self.readTimer = null;
+    logger.warn('readWeeklyStepCount timed out ');
+    configChar.removeListener('data', notificationCallback);
+  }, 5000);
+
+  //logger.error('configChar # of listeners' + util.inspect(configChar.listenerCount('data')));
+  //configChar.removeAllListeners(['data']);
+  configChar.removeListener('data', notificationCallback);
+  configChar.once('error', function(error){
+    logger.error('configChar error ' + error);
+  });
+  configChar.once('data', notificationCallback);
+
+  var opcode = fitband.OPCODE_CURRENT_STEPS ;
+  var dayOfWeek = yesterday.getDay();
+  dayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek;
+  logger.debug('the day of week of yesterday : ' + dayOfWeek);
+  var buffer = new Buffer([opcode, 0x01, dayOfWeek, dayOfWeek ]);
+  try{
+    dataChar.write(buffer, false, function callback(err)  {
+      if (err){
+        logger.error("failed to write command");
+        return;
+      }
+      logger.info("write command: " + opcode.toString(16) + " succeed");
+    });
+  }catch (e){
+    logger.error("failed to write command: " + e);
+    return cb && cb(new Error('ERROR : cannot write opcommand ' + opcode.toString(16)), null);
   }
 };
 
 FitBand.prototype.readStepCount = function(cb){
   var service, dataChar, configChar;
+  var self = this;
+
+  if (self.readTimer){
+    logger.warn('previous read request not finished');
+    return cb && cb(new Error('previous read request not finished'), null);
+  }
+
   service = this.deviceHandle && this.deviceHandle.services &&
         _.find(this.deviceHandle.services, {uuid: FitBand.properties.ble.service});
   if (service && service.characteristics) {
@@ -129,41 +156,52 @@ FitBand.prototype.readStepCount = function(cb){
   }
 
   logger.debug('readStepCount() id: ' , this.deviceHandle.address);
-  //logger.debug('dataChar : ' , dataChar);
-  //logger.debug('configChar : ' , configChar);
-  if (dataChar && configChar) {
-    logger.error('enable data: '+count++);
-    var notificationCallback = function(data,  isNotification){
-      if (!data){
-        logger.error("ERROR : data is invalid");
-        return cb && cb(new Error('ERROR : data is invalid'), null);
-      }
+  if (!dataChar || !configChar) {
+    return cb && cb(new Error('cannot read steps'), null);
+  }
+  logger.error('enable data: '+count++);
+  var readStepCountCB = function(data,  isNotification){
+    clearTimeout(self.readTimer);
+    self.readTimer = null;
+    if (!data){
+      logger.error("ERROR : data is invalid");
+      return cb && cb(new Error('ERROR : data is invalid'), null);
+    }
 
-      //logger.debug("data 0(" + data.length + ") ["+ data.toJSON() + "] received notification? = " + isNotification);
-      var steps = fitband.processData(data);
-      if (steps === undefined || steps === null){
-        return cb && cb(new Error('ERROR : cannot read data from device'), null);
-      }
-      var result = { 'steps' : steps, 'ctime': new Date() };
-      return cb && cb (null, result);
-    };
+    //logger.debug("data 0(" + data.length + ") ["+ data.toJSON() + "] received notification? = " + isNotification);
+    var steps = fitband.processData(data);
+    if (steps === undefined || steps === null){
+      return cb && cb(new Error('ERROR : cannot read data from device'), null);
+    }
+    var result = { 'steps' : steps, 'ctime': new Date() };
+    return cb && cb (null, result);
+  };
 
-    logger.error('configChar listeners' + util.inspect(configChar.listeners('data')));
-    //logger.error('configChar # of listeners' + util.inspect(configChar.listenerCount('data')));
-    configChar.removeAllListeners(['data']);
-    configChar.once('error', function(error){
-      logger.error('configChar error ' + error);
-    });
-    configChar.once('data', notificationCallback);
+  self.readTimer = setTimeout(function(){
+    self.readTimer = null;
+    logger.warn('readStepCount timed out ');
+    configChar.removeListener('data', readStepCountCB);
+  }, READ_TIMEOUT);
 
-    var opcode = fitband.OPCODE_CURRENT_STEPS ;
-    // subscribe notification
-    this.deviceHandle.writeHandle(0x0053, new Buffer([0x01,0x00]), false, function(err){
-      if (err){
-        logger.error("failed to subscribe notification");
-        return;
-      }
-      try{
+  logger.error('configChar listeners' + util.inspect(configChar.listeners('data')));
+  //logger.error('configChar # of listeners' + util.inspect(configChar.listenerCount('data')));
+  //configChar.removeAllListeners(['data']);
+  configChar.removeListener('data', readStepCountCB);
+  configChar.once('error', function(error){
+    logger.error('configChar error ' + error);
+  });
+  //configChar.once('data', readStepCountCB);
+
+  var opcode = fitband.OPCODE_CURRENT_STEPS ;
+  // subscribe notification
+  this.deviceHandle.writeHandle(0x0053, new Buffer([0x01,0x00]), false, function(err){
+    if (err){
+      logger.error("failed to subscribe notification");
+      return;
+    }
+    configChar.once('data', readStepCountCB);
+    try{
+      // read current steps
       dataChar.write(new Buffer([opcode, 0x01,0x08,0x08]), false, function callback(err){
         if (err){
           logger.error("failed to write command");
@@ -171,14 +209,11 @@ FitBand.prototype.readStepCount = function(cb){
         }
         logger.info("write command: " + opcode.toString(16) + " succeed");
       });
-      }catch (e){
-        logger.error("failed to write command: " + e);
-        return cb && cb(new Error('ERROR : cannot write opcommand ' + opcode.toString(16)), null);
-      }
-    });
-  }else{
-    return cb && cb(new Error('cannot read steps'), null);
-  }
+    }catch (e){
+      logger.error("failed to write command: " + e);
+      return cb && cb(new Error('ERROR : cannot write opcommand ' + opcode.toString(16)), null);
+    }
+  });
 };
 
 FitBand.prototype._get = function () {
@@ -215,7 +250,7 @@ FitBand.prototype._get = function () {
           logger.debug('disconnect(): disconnecting timed out ' );
           self.disconnectTimer = null;
           self.deviceHandle.state = 'disconnected';
-        }, 1000);
+        }, DISCONNECT_TIMEOUT);
         ble.disconnect(self.deviceHandle, function(error){ 
           if (self.disconnectTimer){
             clearTimeout(self.disconnectTimer);
