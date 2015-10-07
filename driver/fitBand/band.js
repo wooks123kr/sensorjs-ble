@@ -7,7 +7,8 @@ var assert = require('assert'),
     _ = require("lodash");
 var logger = require('log4js').getLogger('band');
 
-var OPCODE_CURRENT_TIME = 0x89;
+var OPCODE_READ_CURRENT_TIME = 0x89;
+var OPCODE_WRITE_CURRENT_TIME = 0xC2;
 var OPCODE_CURRENT_STEPS = 0xc6;
 var RESPONSE_CURRENT_TIME = 0x29;
 var HANDLE_READ_BATTERY = 0x0036;
@@ -60,22 +61,29 @@ var makeTime = function(){
  * convert buffer that include time date into millis
  * @return time in millis
  */
-var timeInMillis = function(buf){
+var parseDate = function(buf){
   'use strict';
   var idx = 0;
   var res = buf.readUInt8(idx++);
   assert.equal(res, RESPONSE_CURRENT_TIME);
   var len = buf.readUInt8(idx++);
-  assert.equals(len, 7);
+  assert.equal(len, 7);
   var year = buf.readUInt8(idx++) + 2000;
   var month = buf.readUInt8(idx++);
   var day = buf.readUInt8(idx++);
   var hour = buf.readUInt8(idx++);
   var minute = buf.readUInt8(idx++);
   var second = buf.readUInt8(idx++);
-  var date = new Date(year, month, day, hour, minute, second, 0);
-  logger.debug('date: ' + date);
-  return date.getTime();
+  var dayOfWeek = buf.readUInt8(idx++);
+  logger.debug(year + '년 ' +  month + '월 ' + day + '일 ' + hour + '시' );
+  var date = new Date(year, month - 1, day, hour, minute, second, 0);
+  logger.debug(date);
+  if ((dayOfWeek % 7) !== date.getDay()){
+    logger.error('dayOfWeek : ' + dayOfWeek);
+    logger.error('getDay() : ' + date.getDay());
+    return {'status' : 'error', 'message': 'day of week is not correct'};
+  }
+  return { 'date' : date, 'status': 'ok' };
 };
 
 var isStepCount = function isStepCount(data){
@@ -101,6 +109,10 @@ var processData = function(buf){
       var checksum = buf.readUInt8(idx);
       logger.debug("checksum = " + len.toString(16));
       return steps;
+    }else if (res === 0x29){  // read system time positive response
+      return parseDate(buf);
+    }else if (res === 0x22){  // set system time positive response
+      return { 'status' : 'ok'}; // response에는 의미있는 데이터가 없음 
     }else if (res === 0x06){  // negative response for read device data
       return null;
     }else {
@@ -109,13 +121,14 @@ var processData = function(buf){
 };
 
 module.exports = {
-  OPCODE_CURRENT_TIME : OPCODE_CURRENT_TIME,
+  OPCODE_READ_CURRENT_TIME : OPCODE_READ_CURRENT_TIME,
+  OPCODE_WRITE_CURRENT_TIME : OPCODE_WRITE_CURRENT_TIME,
   OPCODE_CURRENT_STEPS : OPCODE_CURRENT_STEPS,
   RESPONSE_CURRENT_TIME : RESPONSE_CURRENT_TIME,
 
   checksum : checksum,
   makeTime : makeTime,
-  timeInMillis : timeInMillis,
+  parseDate : parseDate,
   isStepCount : isStepCount,
   processData : processData
 };
