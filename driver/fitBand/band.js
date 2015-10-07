@@ -42,8 +42,8 @@ var makeTime = function(){
   'use strict';
   var timeDataLen = 0x07;
   var currentTime = new Date();
-  var year = currentTime.getFullYear() ;
-  var month = currentTime.getMonth();
+  var year = currentTime.getFullYear() - 2000 ;
+  var month = currentTime.getMonth() + 1;
   var date = currentTime.getDate();
   var hours = currentTime.getHours();
   var minutes = currentTime.getMinutes();
@@ -51,9 +51,12 @@ var makeTime = function(){
   var milliseconds = currentTime.getMilliseconds();
   var dayOfWeek = currentTime.getDay();
   dayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek;
-  var checksum = year-2000 ^ month ^ date ^ hours ^ minutes ^ seconds ^ dayOfWeek;
-  var buf = new Buffer([timeDataLen, year-2000, month, date, hours, minutes, seconds, dayOfWeek, 0x00]); // append checksum byte
-  buf[timeDataLen] = checksum(buf);
+  var checksum = year ^ month ^ date ^ hours ^ minutes ^ seconds ^ dayOfWeek;
+  var buf = new Buffer([timeDataLen, year, month, date, hours, minutes, seconds, dayOfWeek, 0x00]); // append checksum byte
+  //buf.writeUintLE(checksum(buf), timeDataLen);
+  //buf[timeDataLen] = checksum(buf);
+  buf[buf.length-1] = checksum;
+  logger.debug('makeTime(): ' + buf.toJSON());
   return buf;
 };
 
